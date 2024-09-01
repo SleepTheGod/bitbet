@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>BitBet</title>
+    <style>
+        /* General Styles */
+        body {
+            background-color: #0e0e10;
+            color: #fff;
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #app {
+            border: 1px solid #ffd700;
+            border-radius: 10px;
+            padding: 20px;
+            max-width: 500px;
+            text-align: center;
+            background-color: #1a1a1d;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 10px rgba(255, 215, 0, 0.7);
+            }
+            50% {
+                box-shadow: 0 0 20px rgba(255, 215, 0, 1);
+            }
+            100% {
+                box-shadow: 0 0 10px rgba(255, 215, 0, 0.7);
+            }
+        }
+
+        button {
+            background-color: #ffd700;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            margin: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        button:hover {
+            background-color: #ffea00;
+            color: #333;
+        }
+
+        input[type="number"], input[type="text"] {
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            width: calc(100% - 24px);
+            margin-bottom: 20px;
+        }
+
+        .dice-container {
+            margin-top: 20px;
+        }
+
+        .dice {
+            width: 50px;
+            height: 50px;
+            background-color: #fff;
+            color: #000;
+            display: inline-block;
+            margin: 0 5px;
+            border-radius: 5px;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            line-height: 50px;
+        }
+
+        #chatRoom {
+            border: 1px solid #ffd700;
+            margin-top: 20px;
+            padding: 10px;
+            height: 200px;
+            overflow-y: scroll;
+            background-color: #2a2a2d;
+        }
+
+        .message {
+            background-color: #333;
+            color: #fff;
+            padding: 5px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+        }
+
+        #chatInputContainer {
+            display: flex;
+            margin-top: 10px;
+        }
+
+        #messageInput {
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+
+        @media (max-width: 600px) {
+            #app {
+                width: 90%;
+                margin: 20px;
+            }
+
+            button, input[type="number"], input[type="text"] {
+                width: 100%;
+            }
+        }
+    </style>
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xverse/web3@latest"></script> <!-- Hypothetical Xverse library -->
+</head>
+<body>
+    <div id="app">
+        <h1>BitBet</h1>
+        <button id="connectWallet">Connect Wallet</button>
+        <select id="cryptoSelect">
+            <option value="ETH">Ethereum</option>
+            <option value="BTC">Bitcoin</option>
+        </select>
+        <div id="userAccount"></div>
+        <div id="balance">Balance: 0</div>
+        <div id="game">
+            <input type="number" id="betAmount" placeholder="Bet Amount">
+            <button id="rollDice" disabled>Roll Dice</button>
+            <div id="diceResult"></div>
+        </div>
+
+        <!-- Chat Room -->
+        <div id="chatRoom"></div>
+        <div id="chatInputContainer">
+            <input type="text" id="messageInput" placeholder="Type your message..." onkeyup="sendMessageOnEnter(event)">
+            <button id="sendMessage">Send</button>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            let userAccount;
+            let provider;
+            let signer;
+            let contract;
+            let currentCrypto = 'ETH';
+
+            const connectWalletButton = document.getElementById('connectWallet');
+            const rollDiceButton = document.getElementById('rollDice');
+            const diceResultDiv = document.getElementById('diceResult');
+            const userAccountDiv = document.getElementById('userAccount');
+            const balanceDiv = document.getElementById('balance');
+            const cryptoSelect = document.getElementById('cryptoSelect');
+
+            cryptoSelect.addEventListener('change', function() {
+                currentCrypto = cryptoSelect.value;
+                userAccountDiv.innerHTML = '';
+                balanceDiv.innerHTML = '';
+                rollDiceButton.disabled = true;
+            });
+
+            connectWalletButton.addEventListener('click', async function() {
+                if (currentCrypto === 'ETH') {
+                    await connectEthereumWallet();
+                } else if (currentCrypto === 'BTC') {
+                    await connectBitcoinWallet();
+                }
+            });
+
+            async function connectEthereumWallet() {
+                if (typeof window.ethereum !== 'undefined') {
+                    try {
+                        await window.ethereum.request({ method: 'eth_requestAccounts' });
+                        provider = new ethers.providers.Web3Provider(window.ethereum);
+                        signer = provider.getSigner();
+                        userAccount = await signer.getAddress();
+                        userAccountDiv.innerHTML = `Connected Account: ${userAccount}`;
+                        rollDiceButton.disabled = false;
+                        updateEthereumBalance();
+                    } catch (error) {
+                        console.error("Could not get accounts", error);
+                    }
+                } else {
+                    alert('MetaMask is not installed!');
+                }
+            }
+
+            async function updateEthereumBalance() {
+                const balance = await provider.getBalance(userAccount);
+                balanceDiv.innerHTML = `Balance: ${ethers.utils.formatEther(balance)} ETH`;
+            }
+
+            async function connectBitcoinWallet() {
+                try {
+                    const xverse = new XverseWeb3(); // Hypothetical Xverse library instance
+                    await xverse.connect();
+                    userAccount = xverse.getAddress();
+                    userAccountDiv.innerHTML = `Connected Account: ${userAccount}`;
+                    rollDiceButton.disabled = false;
+                    updateBitcoinBalance();
+                } catch (error) {
+                    console.error("Could not connect to Xverse wallet", error);
+                }
+            }
+
+            async function updateBitcoinBalance() {
+                try {
+                    const balance = await xverse.getBalance(userAccount); // Hypothetical method to get balance
+                    balanceDiv.innerHTML = `Balance: ${balance} BTC`;
+                } catch (error) {
+                    console.error("Could not retrieve Bitcoin balance", error);
+                }
+            }
+
+            rollDiceButton.addEventListener('click', async function() {
+                const betAmount = document.getElementById('betAmount').value;
+                if (!betAmount || isNaN(betAmount) || betAmount <= 0) {
+                    alert("Please enter a valid bet amount");
+                    return;
+                }
+
+                const diceResult = rollDice();
+                diceResultDiv.innerHTML = `You rolled: ${diceResult}`;
+
+                if (currentCrypto === 'ETH') {
+                    await performEthereumTransaction(ethers.utils.parseEther(betAmount));
+                } else if (currentCrypto === 'BTC') {
+                    await performBitcoinTransaction(betAmount);
+                }
+
+                checkWin(diceResult, betAmount);
+            });
+
+            function rollDice() {
+                return Math.floor(Math.random() * 6) + 1; // Simulate rolling a six-sided dice
+            }
+
+            async function performEthereumTransaction(betAmount) {
+                try {
+                    const tx = await signer.sendTransaction({
+                        to: '0xYourEthereumContractAddress', // Replace with your contract address
+                        value: betAmount
+                    });
+                    await tx.wait();
+                    alert(`Transaction successful: ${tx.hash}`);
+                    updateEthereumBalance();
+                    fetchEtherscan(tx.hash);
+                } catch (error) {
+                    console.error("Transaction failed", error);
+                }
+            }
+
+            async function performBitcoinTransaction(betAmount) {
+                try {
+                    const tx = await xverse.sendTransaction({
+                        to: 'YourBitcoinAddress', // Replace with your receiving address
+                        amount: betAmount
+                    });
+                    alert(`Transaction successful: ${tx.txid}`);
+                    updateBitcoinBalance();
+                } catch (error) {
+                    console.error("Transaction failed", error);
+                }
+            }
+
+            function checkWin(diceNumber, betAmount) {
+                if (diceNumber >= 4) {
+                    diceResultDiv.innerHTML += '<br>You win!';
+                } else {
+                    diceResultDiv.innerHTML += '<br>You lose!';
+                }
+            }
+
+            async function fetchEtherscan(txHash) {
+                const url = `https://api.etherscan.io/api?module=transaction&action=gettxreceiptstatus&txhash=${txHash}&apikey=YourApiKeyToken`;
+                const response = await fetch(url);
+                const data = await response.json();
+                if (data.status === '1') {
+                    alert('Transaction confirmed');
+                } else {
+                    alert('Transaction failed');
+                }
+            }
+
+            // Chat Room Logic
+            const chatRoom = document.getElementById('chatRoom');
+            const sendMessageButton = document.getElementById('sendMessage');
+            const messageInput = document.getElementById('messageInput');
+
+            sendMessageButton.addEventListener('click', sendMessage);
+
+            window.sendMessageOnEnter = function(event) {
+                if (event.key === 'Enter') {
+                    sendMessage();
+                }
+            };
+
+            function sendMessage() {
+                const message = messageInput.value.trim();
+                if (message) {
+                    const messageElement = document.createElement('div');
+                    messageElement.classList.add('message');
+                    messageElement.textContent = `${userAccount ? userAccount.substring(0, 6) : 'Anon'}: ${message}`;
+                    chatRoom.appendChild(messageElement);
+                    messageInput.value = '';
+                    chatRoom.scrollTop = chatRoom.scrollHeight; // Scroll to the bottom
+                }
+            }
+        });
+
+        // Prevent right-click and F12
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        document.onkeydown = function(e) {
+            if (e.key === 'F12') {
+                return false;
+            }
+        };
+    </script>
+</body>
+</html>
